@@ -1021,11 +1021,11 @@ When contributing:
 
 ------------------------------------------------------------------------
 
-# 📄 License
+## 👨‍💻 Author
 
-This project is released under the **MIT License** unless a different
-license is specified by the project owner.
+**Nagaraj**
+
+AI Data Assistant — AI-powered natural language database analytics.
 
 ------------------------------------------------------------------------
-
 
