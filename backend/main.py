@@ -52,6 +52,15 @@ app.add_middleware(
 
 
 # API routes
+
+# Health endpoint for frontend (Registered before foundation router to take precedence)
+@app.get("/api/health")
+def api_health():
+    return {
+        "status": "ok",
+        "message": "AI Database Assistant API is running"
+    }
+
 app.include_router(
     auth.router,
     prefix="/api/auth",
@@ -75,6 +84,8 @@ app.include_router(
     prefix="/api",
     tags=["foundation"],
 )
+
+
 
 
 # Root endpoint
