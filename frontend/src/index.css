@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-navy: #0f172a;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-lightblue: #eff6ff;
+}
+
+@layer base {
+  :root {
+    --chart-grid: #e2e8f0;
+    --chart-text: #64748b;
+    --chart-cursor: #f1f5f9;
+    --chart-tooltip-bg: #ffffff;
+    --chart-tooltip-text: #0f172a;
+    --chart-tooltip-border: #e2e8f0;
+  }
+  
+  .dark {
+    --chart-grid: #334155;
+    --chart-text: #94a3b8;
+    --chart-cursor: #1e293b;
+    --chart-tooltip-bg: #0f172a;
+    --chart-tooltip-text: #f1f5f9;
+    --chart-tooltip-border: #334155;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200;
+  }
+}
+
