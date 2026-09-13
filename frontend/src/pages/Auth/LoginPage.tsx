@@ -103,9 +103,9 @@ export const LoginPage = () => {
 
             <div className="flex items-center justify-end">
               <div className="text-sm">
-                <a href="#" className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:text-blue-400">
+                <Link to="/forgot-password" className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:text-blue-400">
                   Forgot your password?
-                </a>
+                </Link>
               </div>
             </div>
 

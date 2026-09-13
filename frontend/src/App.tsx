@@ -13,6 +13,8 @@ import { AnalyticsPage } from './pages/Analytics/AnalyticsPage';
 import { SettingsPage } from './pages/Settings/SettingsPage';
 import { LoginPage } from './pages/Auth/LoginPage';
 import { RegisterPage } from './pages/Auth/RegisterPage';
+import { ForgotPasswordPage } from './pages/Auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/Auth/ResetPasswordPage';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = () => {
@@ -78,6 +80,8 @@ function App() {
       <Routes>
         <Route path="/login" element={token ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
         <Route path="/register" element={token ? <Navigate to="/dashboard" replace /> : <RegisterPage />} />
+        <Route path="/forgot-password" element={token ? <Navigate to="/dashboard" replace /> : <ForgotPasswordPage />} />
+        <Route path="/reset-password" element={token ? <Navigate to="/dashboard" replace /> : <ResetPasswordPage />} />
         
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

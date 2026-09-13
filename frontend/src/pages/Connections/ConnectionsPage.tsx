@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { getConnections, createConnection, updateConnection, deleteConnection, testConnection, testExistingConnection } from '../../services/api';
 import { useConnectionStore, type DatabaseConnection } from '../../store/connectionStore';
+import { useNotificationStore } from '../../store/notificationStore';
 import { Database, Plus, Edit2, Trash2, Check, Loader2, Play, AlertCircle, X, Server } from 'lucide-react';
 
 export const ConnectionsPage = () => {
-  const { connections, setConnections, activeConnectionId, setActiveConnection } = useConnectionStore();
+  const { connections, setConnections, activeConnectionId, setActiveConnection, connectionStatus } = useConnectionStore();
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
@@ -84,7 +85,7 @@ export const ConnectionsPage = () => {
     setTestResult(null);
     setTestError(null);
     try {
-      await testConnection(getPayload());
+      await testConnection(getPayload()).finally(() => useNotificationStore.getState().fetchNotifications());
       setTestResult({ success: true, message: "Connection successful" });
     } catch (err: any) {
       setTestResult({ success: false, message: err.response?.data?.detail || err.message || "Connection failed" });
@@ -190,8 +191,18 @@ export const ConnectionsPage = () => {
                           {conn.db_type}
                         </span>
                         {activeConnectionId === conn.id && (
-                          <span className="text-xs font-medium bg-emerald-100 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                            connectionStatus === 'connected' ? 'bg-emerald-100 text-emerald-700 dark:text-emerald-300' :
+                            connectionStatus === 'disconnected' ? 'bg-red-100 text-red-700 dark:text-red-300' :
+                            'bg-yellow-100 text-yellow-700 dark:text-yellow-300'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              connectionStatus === 'connected' ? 'bg-emerald-500' :
+                              connectionStatus === 'disconnected' ? 'bg-red-500' :
+                              'bg-yellow-500 animate-pulse'
+                            }`}></span>
+                            {connectionStatus === 'connected' ? 'Connected' :
+                             connectionStatus === 'disconnected' ? 'Disconnected' : 'Checking'}
                           </span>
                         )}
                       </div>
@@ -366,7 +377,7 @@ export const ConnectionsPage = () => {
                         value={password} 
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-sm"
-                        placeholder="••••••••"
+                        placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                       />
                     </div>
                   </>
@@ -407,3 +418,4 @@ export const ConnectionsPage = () => {
     </div>
   );
 };
+

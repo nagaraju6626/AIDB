@@ -10,6 +10,7 @@ from models.user import User
 from database.universal_service import UniversalDatabaseService
 from services.ai_service import AIService
 from services.sql_validator import validate_sql, SQLValidationError
+from api.notifications import create_notification
 
 router = APIRouter()
 ai_service = AIService()
@@ -75,6 +76,11 @@ def ask_question(
         insight_data = ai_service.generate_insight(question, safe_sql, results)
         columns = list(results[0].keys()) if results else []
         
+        create_notification(db, current_user.id, "success", "Query Completed", "Your database query was executed successfully.")
+        
+        if insight_data.get("insight_source") == "fallback":
+            create_notification(db, current_user.id, "warning", "AI Insight Unavailable", "The query completed, but AI insight could not be generated.")
+        
         return {
             "success": True,
             "data": {
@@ -94,6 +100,9 @@ def ask_question(
         history_record.status = "failed"
         history_record.error_message = str(e)
         db.commit()
+        
+        create_notification(db, current_user.id, "error", "Query Failed", "The query could not be completed.")
+        
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))

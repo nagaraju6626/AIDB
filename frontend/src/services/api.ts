@@ -33,6 +33,22 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.data?.detail?.includes('Unable to connect') || 
+        error.response?.data?.detail?.includes('Failed to connect') ||
+        error.response?.data?.detail?.includes('Connection failed') ||
+        error.response?.data?.detail?.includes('No database connection')) {
+       window.dispatchEvent(new Event('db:disconnected'));
+    }
+    if (error.response?.status === 401) {
+      // Allow auth store to handle or just remove token here
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const checkHealth = async () => {
   try {
     const response = await api.get('/health');
@@ -58,6 +74,16 @@ export const login = async (data: any) => {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
   });
+  return response.data;
+};
+
+export const forgotPassword = async (data: { email: string }) => {
+  const response = await api.post('/auth/forgot-password', data);
+  return response.data;
+};
+
+export const resetPassword = async (data: { token: string; new_password: string }) => {
+  const response = await api.post('/auth/reset-password', data);
   return response.data;
 };
 
@@ -148,5 +174,42 @@ export const updateConnection = async (id: number, data: any) => {
 
 export const deleteConnection = async (id: number) => {
   const response = await api.delete(`/databases/${id}`);
+  return response.data;
+};
+
+// --- Notifications API ---
+
+export const getNotifications = async () => {
+  const response = await api.get('/notifications');
+  return response.data;
+};
+
+export const createNotification = async (data: { type: string, title: string, message: string }) => {
+  const response = await api.post('/notifications', data);
+  return response.data;
+};
+
+export const getUnreadNotificationCount = async () => {
+  const response = await api.get('/notifications/unread-count');
+  return response.data;
+};
+
+export const markNotificationAsRead = async (id: number) => {
+  const response = await api.patch(`/notifications/${id}/read`);
+  return response.data;
+};
+
+export const markAllNotificationsAsRead = async () => {
+  const response = await api.patch('/notifications/read-all');
+  return response.data;
+};
+
+export const deleteNotification = async (id: number) => {
+  const response = await api.delete(`/notifications/${id}`);
+  return response.data;
+};
+
+export const deleteAllNotifications = async () => {
+  const response = await api.delete('/notifications');
   return response.data;
 };

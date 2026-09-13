@@ -1,18 +1,17 @@
-import { Bell, Moon, Sun, ChevronDown, Database, Check, User, Settings, LogOut } from 'lucide-react';
+﻿import { Bell, Moon, Sun, ChevronDown, Database, Check, User, Settings, LogOut } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useConnectionStore } from '../../store/connectionStore';
 import { useNotificationStore } from '../../store/notificationStore';
-import { getHealth } from '../../services';
-import { getConnections } from '../../services/api';
+
+import { getConnections, testExistingConnection } from '../../services/api';
 import { useNavigate, Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 
 export const Topbar = () => {
   const { user, logout } = useAuthStore();
-  const [connected, setConnected] = useState(false);
-  const { activeConnectionId, connections, setActiveConnection, setConnections } = useConnectionStore();
-  const { notifications, markAsRead, markAllAsRead, clearAll } = useNotificationStore();
+  const { activeConnectionId, connections, connectionStatus, setActiveConnection, setConnections, setConnectionStatus } = useConnectionStore();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll, fetchNotifications } = useNotificationStore();
   
   const [dbDropdownOpen, setDbDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -40,16 +39,32 @@ export const Topbar = () => {
   };
 
   useEffect(() => {
-    getHealth().then(() => setConnected(true)).catch(() => setConnected(false));
-    
+    fetchNotifications();
     getConnections().then(res => {
       setConnections(res.data.connections);
-      const activeState = useConnectionStore.getState().activeConnectionId;
+      let activeState = useConnectionStore.getState().activeConnectionId;
       if (!activeState && res.data.connections.length > 0) {
-        setActiveConnection(res.data.connections[0].id);
+        activeState = res.data.connections[0].id;
+        setActiveConnection(activeState);
       }
     }).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (!activeConnectionId) {
+      setConnectionStatus("not_connected");
+      return;
+    }
+    
+    setConnectionStatus("checking");
+    testExistingConnection(activeConnectionId).finally(() => fetchNotifications())
+      .then(() => setConnectionStatus("connected"))
+      .catch(() => setConnectionStatus("disconnected"));
+      
+    const handleDisconnect = () => setConnectionStatus("disconnected");
+    window.addEventListener('db:disconnected', handleDisconnect);
+    return () => window.removeEventListener('db:disconnected', handleDisconnect);
+  }, [activeConnectionId, setConnectionStatus]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -68,7 +83,6 @@ export const Topbar = () => {
   }, []);
   
   const activeConnection = connections.find(c => c.id === activeConnectionId);
-  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const handleLogout = () => {
     logout();
@@ -101,7 +115,6 @@ export const Topbar = () => {
                   onClick={() => {
                     setActiveConnection(conn.id);
                     setDbDropdownOpen(false);
-                    window.location.reload();
                   }}
                   className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700/50 dark:hover:bg-slate-700 flex items-center justify-between transition-colors"
                 >
@@ -116,8 +129,30 @@ export const Topbar = () => {
           )}
         </div>
         <div className="flex items-center gap-2 hidden sm:flex">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-          <span className="text-xs text-slate-500 dark:text-slate-400 dark:text-slate-400 font-medium">{connected ? 'Connected' : 'Disconnected'}</span>
+          {connectionStatus === 'connected' && (
+            <>
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Connected</span>
+            </>
+          )}
+          {connectionStatus === 'disconnected' && (
+            <>
+              <div className="w-2 h-2 rounded-full bg-red-500"></div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Disconnected</span>
+            </>
+          )}
+          {connectionStatus === 'checking' && (
+            <>
+              <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Checking...</span>
+            </>
+          )}
+          {connectionStatus === 'not_connected' && (
+            <>
+              <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Not Connected</span>
+            </>
+          )}
         </div>
       </div>
       
@@ -158,13 +193,13 @@ export const Topbar = () => {
                     <div 
                       key={n.id} 
                       onClick={() => markAsRead(n.id)}
-                      className={`p-4 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors ${!n.isRead ? 'bg-blue-50 dark:bg-blue-900/20/50 dark:bg-blue-900/10' : ''}`}
+                      className={`p-4 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors ${!n.is_read ? 'bg-blue-50 dark:bg-blue-900/20/50 dark:bg-blue-900/10' : ''}`}
                     >
                       <div className="flex justify-between items-start mb-1">
-                        <span className={`text-sm font-medium ${!n.isRead ? 'text-slate-800 dark:text-slate-200 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400 dark:text-slate-400'}`}>{n.title}</span>
-                        <span className="text-[10px] text-slate-400">{formatDistanceToNow(new Date(n.timestamp))} ago</span>
+                        <span className={`text-sm font-medium ${!n.is_read ? 'text-slate-800 dark:text-slate-200 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400 dark:text-slate-400'}`}>{n.title}</span>
+                        <span className="text-[10px] text-slate-400">{formatDistanceToNow(new Date(n.created_at + 'Z'))} ago</span>
                       </div>
-                      <p className={`text-xs ${!n.isRead ? 'text-slate-600 dark:text-slate-400 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400 dark:text-slate-400'}`}>{n.message}</p>
+                      <p className={`text-xs ${!n.is_read ? 'text-slate-600 dark:text-slate-400 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400 dark:text-slate-400'}`}>{n.message}</p>
                     </div>
                   ))
                 )}
@@ -222,3 +257,4 @@ export const Topbar = () => {
     </div>
   );
 };
+

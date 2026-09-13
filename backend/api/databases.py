@@ -10,6 +10,7 @@ from schemas.connection import ConnectionCreate, ConnectionResponse
 from api.deps import get_current_user
 from models.user import User
 from security.encryption import encrypt_password
+from api.notifications import create_notification
 
 router = APIRouter()
 
@@ -49,6 +50,7 @@ def get_connections(
 @router.post("/test")
 def test_connection_params(
     conn: ConnectionCreate,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if conn.db_type not in ["sqlite", "postgres", "mysql"]:
@@ -68,8 +70,10 @@ def test_connection_params(
         service = UniversalDatabaseService(temp_conn)
         service.test_connection()
         tables = service.get_tables()
+        create_notification(db, current_user.id, "success", "Database Connected", "Your database connection was successful.")
         return {"success": True, "message": "Connection successful", "data": {"tables": len(tables)}}
     except Exception as e:
+        create_notification(db, current_user.id, "error", "Database Connection Failed", "Unable to connect to your database.")
         raise HTTPException(status_code=400, detail=f"Failed to connect: {str(e)}")
     finally:
         if 'service' in locals():
@@ -89,8 +93,10 @@ def test_connection(
         service = UniversalDatabaseService(connection)
         service.test_connection()
         tables = service.get_tables()
+        create_notification(db, current_user.id, "success", "Database Connected", "Your database connection was successful.")
         return {"success": True, "message": "Connection successful", "data": {"tables": len(tables)}}
     except Exception as e:
+        create_notification(db, current_user.id, "error", "Database Connection Failed", "Unable to connect to your database.")
         raise HTTPException(status_code=400, detail=f"Failed to connect: {str(e)}")
     finally:
         if 'service' in locals():

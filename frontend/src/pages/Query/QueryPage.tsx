@@ -14,6 +14,7 @@ import { useLocation } from 'react-router-dom';
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 import { useConnectionStore } from '../../store/connectionStore';
+import { useNotificationStore } from '../../store/notificationStore';
 
 export const QueryPage = () => {
   const location = useLocation();
@@ -108,9 +109,10 @@ export const QueryPage = () => {
       }
       
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.response?.data?.error || err.message || 'An error occurred while processing the query.');
+      setError(err.response?.data?.detail || err.message || 'An error occurred while processing your request.');
     } finally {
       setIsProcessing(false);
+      useNotificationStore.getState().fetchNotifications();
     }
   };
 

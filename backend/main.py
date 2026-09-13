@@ -8,7 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database.core import engine, Base
-from api import auth, databases, foundation, query
+from models.user import User, PasswordResetToken
+from models.connection import DatabaseConnection
+from models.query import QueryHistory, SavedQuery
+from models.notification import Notification
+from api import auth, databases, foundation, query, notifications
 
 
 # Create all tables in the app database
@@ -77,6 +81,12 @@ app.include_router(
     query.router,
     prefix="/api/query",
     tags=["query"],
+)
+
+app.include_router(
+    notifications.router,
+    prefix="/api/notifications",
+    tags=["notifications"],
 )
 
 app.include_router(

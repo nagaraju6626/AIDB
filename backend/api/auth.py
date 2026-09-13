@@ -58,3 +58,55 @@ def update_profile(profile: ProfileUpdate, db: Session = Depends(get_db), curren
     db.commit()
     db.refresh(current_user)
     return current_user
+
+import secrets
+import hashlib
+import os
+from datetime import datetime, timedelta
+from models.user import PasswordResetToken
+from schemas.user import ForgotPasswordRequest, ResetPasswordRequest
+from services.email import send_password_reset_email
+
+@router.post('/forgot-password')
+def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == request.email).first()
+    if user:
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.utcnow() + timedelta(minutes=30)
+        
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at
+        )
+        db.add(reset_token)
+        db.commit()
+        
+        frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+        reset_link = f"{frontend_url}/reset-password?token={raw_token}"
+        send_password_reset_email(user.email, reset_link)
+        
+    return {'message': 'If an account exists for this email, a password reset link has been sent.'}
+
+@router.post('/reset-password')
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    token_hash = hashlib.sha256(request.token.encode()).hexdigest()
+    reset_record = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token_hash == token_hash,
+        PasswordResetToken.used_at == None,
+        PasswordResetToken.expires_at > datetime.utcnow()
+    ).first()
+    
+    if not reset_record:
+        raise HTTPException(status_code=400, detail='Invalid or expired reset token')
+        
+    user = db.query(User).filter(User.id == reset_record.user_id).first()
+    if not user:
+        raise HTTPException(status_code=400, detail='Invalid token')
+        
+    user.hashed_password = get_password_hash(request.new_password)
+    reset_record.used_at = datetime.utcnow()
+    
+    db.commit()
+    return {'message': 'Password reset successfully'}
