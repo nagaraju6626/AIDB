@@ -1,9 +1,12 @@
 import os
 import json
 import time
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, Tuple
 from groq import Groq
 from groq import APIError, APIConnectionError, RateLimitError
+
+logger = logging.getLogger(__name__)
 
 api_key = os.environ.get("GROQ_API_KEY")
 
@@ -24,7 +27,9 @@ class AIService:
             try:
                 return func(*args, **kwargs)
             except RateLimitError as e:
+                logger.warning(f"Groq API rate limit on attempt {attempt + 1}/{max_retries}")
                 if attempt == max_retries - 1:
+                    logger.error("Groq API quota exceeded or rate limited after max retries.")
                     raise Exception("Groq API quota exceeded or rate limited. Please try again later.")
                 
                 # Check for Retry-After header if available
@@ -40,6 +45,7 @@ class AIService:
                 else:
                     delay = base_delay * (2 ** attempt)
                 
+                logger.info(f"Retrying Groq API after {delay} seconds...")
                 time.sleep(delay)
             except APIConnectionError as e:
                 raise Exception("Failed to connect to Groq API. Please check your network connection.")
@@ -100,7 +106,38 @@ DO NOT wrap your response in markdown blocks. Return ONLY valid JSON.
         except json.JSONDecodeError:
             raise Exception("AI Service returned invalid SQL format. Please rephrase your question.")
 
-    def generate_insight(self, question: str, sql: str, results: list) -> str:
+    def _generate_fallback_insight(self, results: list) -> str:
+        if not results:
+            return "No records matched this query."
+        
+        if len(results) == 1:
+            row = results[0]
+            parts = []
+            for k, v in row.items():
+                if isinstance(v, (int, float)):
+                    parts.append(f"{k} is {v}")
+            if parts:
+                return f"The result shows that {', '.join(parts)}."
+            return f"The query returned a single record with {list(row.keys())[0]} as {list(row.values())[0]}."
+
+        columns = list(results[0].keys())
+        numeric_cols = [c for c in columns if isinstance(results[0][c], (int, float))]
+        
+        if numeric_cols:
+            col = numeric_cols[0]
+            sorted_res = sorted([r for r in results if r.get(col) is not None], key=lambda x: x[col], reverse=True)
+            if sorted_res:
+                highest = sorted_res[0]
+                non_numeric = [c for c in columns if c != col]
+                if non_numeric:
+                    label_col = non_numeric[0]
+                    label_val = highest.get(label_col)
+                    return f"The highest {col} is {highest[col]} for {label_val}."
+                return f"The highest {col} is {highest[col]}."
+                
+        return f"The query returned {len(results)} records."
+
+    def generate_insight(self, question: str, sql: str, results: list) -> Dict[str, str]:
         """Generates a natural language insight based on the query results."""
         # Limit results length to avoid token explosion
         results_subset = results[:50]
@@ -112,7 +149,7 @@ Executed SQL: {sql}
 Results (up to 50 rows): {json.dumps(results_subset)}
 """
         if not self.api_key:
-            return "Insight unavailable: AI service configuration is invalid."
+            return {"insight": self._generate_fallback_insight(results), "insight_source": "fallback"}
 
         def _call_groq():
             response = self.client.chat.completions.create(
@@ -126,10 +163,8 @@ Results (up to 50 rows): {json.dumps(results_subset)}
             return response.choices[0].message.content.strip()
 
         try:
-            return self._execute_with_retry(_call_groq)
+            insight_text = self._execute_with_retry(_call_groq)
+            return {"insight": insight_text, "insight_source": "ai"}
         except Exception as e:
-            if "quota exceeded" in str(e).lower() or "rate limit" in str(e).lower():
-                return "Insight unavailable: Groq API rate limit exceeded."
-            if "invalid" in str(e).lower() or "configuration" in str(e).lower():
-                return "Insight unavailable: AI service configuration is invalid."
-            return f"Insight unavailable due to an AI error: {str(e)}"
+            logger.warning(f"AI Insight generation failed: {str(e)}. Using fallback activation.")
+            return {"insight": self._generate_fallback_insight(results), "insight_source": "fallback"}

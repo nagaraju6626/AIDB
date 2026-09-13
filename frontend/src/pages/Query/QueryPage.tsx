@@ -507,9 +507,16 @@ export const QueryPage = () => {
               
               {/* AI Insight */}
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/30 p-5">
-                <h3 className="font-semibold text-blue-900 flex items-center gap-2 mb-3">
-                  <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  AI Insight
+                <h3 className="font-semibold text-blue-900 flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    AI Insight
+                  </div>
+                  {result.insight_source === 'fallback' && (
+                    <span className="text-xs text-blue-500/70 italic font-normal bg-blue-100/50 px-2 py-0.5 rounded-full">
+                      Generated from query results
+                    </span>
+                  )}
                 </h3>
                 {result.insight ? (
                   <p className="text-blue-800 dark:text-blue-200 leading-relaxed text-sm">

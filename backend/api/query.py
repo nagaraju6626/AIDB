@@ -72,7 +72,7 @@ def ask_question(
         history_record.sql_query = safe_sql
         db.commit()
         
-        insight = ai_service.generate_insight(question, safe_sql, results)
+        insight_data = ai_service.generate_insight(question, safe_sql, results)
         columns = list(results[0].keys()) if results else []
         
         return {
@@ -86,7 +86,8 @@ def ask_question(
                 "row_count": len(results),
                 "execution_time_ms": execution_time_ms,
                 "chart_type": ai_response.get("chart_type", "none"),
-                "insight": insight
+                "insight": insight_data.get("insight", ""),
+                "insight_source": insight_data.get("insight_source", "ai")
             }
         }
     except Exception as e:
