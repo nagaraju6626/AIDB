@@ -26,6 +26,7 @@ app = FastAPI(title="AI Database Assistant API")
 # CORS configuration
 # Supports Vite development ports 5173, 5174 and 5175
 default_origins = [
+    "https://aidb-q2ng.onrender.com",
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
@@ -37,11 +38,12 @@ default_origins = [
 cors_origin_env = os.getenv("CORS_ORIGIN")
 
 if cors_origin_env:
-    allow_origins = [
+    configured_origins = [
         origin.strip()
         for origin in cors_origin_env.split(",")
         if origin.strip()
     ]
+    allow_origins = list(dict.fromkeys(default_origins + configured_origins))
 else:
     allow_origins = default_origins
 
