@@ -9,7 +9,7 @@ import {
 import { ApiErrorAlert } from '../../components/UI/ApiErrorAlert';
 import { useAuthStore } from '../../store/authStore';
 import { useConnectionStore } from '../../store/connectionStore';
-import { useSchemaStore } from '../../store/schemaStore';
+import { useSchemaStore, type TableOverview } from '../../store/schemaStore';
 
 export const SchemaPage = () => {
   const { token } = useAuthStore();
@@ -53,10 +53,12 @@ export const SchemaPage = () => {
     setError(null);
     try {
       const res = await getSchema();
-      const fetchedTables = res.data?.tables || [];
-      const uniqueTables = Array.from(new Map(fetchedTables.map((table: { name: string }) => [table.name, table])).values());
-      setTables(uniqueTables as any[]);
-      if (selectedTableName && !uniqueTables.some((table: { name: string }) => table.name === selectedTableName)) {
+      const fetchedTables: TableOverview[] = res.data?.tables || [];
+      const uniqueTables = Array.from(
+        new Map(fetchedTables.map((table) => [table.name, table])).values()
+      );
+      setTables(uniqueTables);
+      if (selectedTableName && !uniqueTables.some((table) => table.name === selectedTableName)) {
         clearSelection();
       }
     } catch (err: any) {
