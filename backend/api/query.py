@@ -9,7 +9,7 @@ from api.deps import get_current_user
 from models.user import User
 from database.universal_service import UniversalDatabaseService
 from services.ai_service import AIService
-from services.sql_validator import validate_sql, SQLValidationError
+from services.query_validator import QueryCorrectionError, validate_query_before_execution
 from api.notifications import create_notification
 
 router = APIRouter()
@@ -50,18 +50,41 @@ def ask_question(
     try:
         schema = adapter.get_schema()
         
-        ai_response = ai_service.generate_sql(question=question, schema=schema, dialect=connection.db_type)
-        raw_sql = ai_response.get("sql")
+        is_direct_sql = question.lstrip().lower().startswith(("select", "with", "delete", "update", "insert", "drop", "alter", "truncate", "create", "grant", "revoke"))
+        ai_response = {"intent": "Direct SQL query", "chart_type": "none"}
+        raw_sql = question if is_direct_sql else None
+        if not is_direct_sql:
+            ai_response = ai_service.generate_sql(question=question, schema=schema, dialect=connection.db_type)
+            raw_sql = ai_response.get("sql")
         if not raw_sql:
             raise HTTPException(status_code=500, detail="AI did not generate a SQL query")
-            
+
+        try:
+            safe_sql = validate_query_before_execution(
+                question=question,
+                generated_sql=raw_sql,
+                schema=schema,
+                adapter=adapter,
+                dialect=connection.db_type,
+            )
+        except QueryCorrectionError as exc:
+            history_record.status = "failed"
+            history_record.error_message = exc.message
+            history_record.sql_query = raw_sql
+            db.commit()
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "validation_error": True,
+                    "error_type": exc.error_type,
+                    "message": exc.message,
+                    "suggestion": exc.suggestion,
+                    "corrected_query": exc.corrected_query,
+                },
+            ) from exc
+
         history_record.sql_query = raw_sql
         db.commit()
-            
-        try:
-            safe_sql = validate_sql(raw_sql, dialect=connection.db_type)
-        except SQLValidationError as e:
-            raise HTTPException(status_code=400, detail=f"Blocked unsafe query: {str(e)}")
             
         start_time = time.time()
         results = adapter.execute_read_query(safe_sql, limit=1000)

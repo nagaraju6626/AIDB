@@ -35,25 +35,20 @@ def get_active_connection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> DatabaseConnection:
-    connection = None
-    if x_connection_id:
-        connection = db.query(DatabaseConnection).filter(
-            DatabaseConnection.id == int(x_connection_id),
-            DatabaseConnection.user_id == current_user.id
-        ).first()
-    
+    if not x_connection_id:
+        raise HTTPException(status_code=400, detail="No active database connection selected")
+
+    try:
+        connection_id = int(x_connection_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid active database connection") from exc
+
+    connection = db.query(DatabaseConnection).filter(
+        DatabaseConnection.id == connection_id,
+        DatabaseConnection.user_id == current_user.id
+    ).first()
+
     if not connection:
-        connection = db.query(DatabaseConnection).filter(
-            DatabaseConnection.user_id == current_user.id,
-            DatabaseConnection.name == "Demo Database"
-        ).first()
-        
-    if not connection:
-        connection = db.query(DatabaseConnection).filter(
-            DatabaseConnection.user_id == current_user.id
-        ).order_by(DatabaseConnection.id).first()
-        
-    if not connection:
-        raise HTTPException(status_code=404, detail="No database connection configured")
+        raise HTTPException(status_code=404, detail="Active database connection not found")
         
     return connection

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { 
   Database, Table2, Search, Key, Link as LinkIcon, RefreshCw, 
   ChevronRight, AlignLeft, Info, Eye
@@ -8,52 +8,43 @@ import {
 } from '../../services/api';
 import { ApiErrorAlert } from '../../components/UI/ApiErrorAlert';
 import { useAuthStore } from '../../store/authStore';
-
-interface TableOverview {
-  name: string;
-  columns: number;
-  records: number;
-}
-
-interface ColumnDef {
-  name: string;
-  type: string;
-  nullable: boolean;
-  primary_key: boolean;
-  foreign_key: { table: string; column: string } | null;
-}
-
-interface TableDetail {
-  name: string;
-  columns: ColumnDef[];
-  indexes: any[];
-}
-
-interface TablePreview {
-  name: string;
-  rows: any[];
-}
+import { useConnectionStore } from '../../store/connectionStore';
+import { useSchemaStore } from '../../store/schemaStore';
 
 export const SchemaPage = () => {
   const { token } = useAuthStore();
-  
-  // State
-  const [loadingSchema, setLoadingSchema] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  const [tables, setTables] = useState<TableOverview[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTableName, setSelectedTableName] = useState<string | null>(null);
-  
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  const [tableDetail, setTableDetail] = useState<TableDetail | null>(null);
-  const [detailsError, setDetailsError] = useState<string | null>(null);
-
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [tablePreview, setTablePreview] = useState<TablePreview | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
+  const activeConnectionId = useConnectionStore(state => state.activeConnectionId);
+  const {
+    connectionId,
+    tables,
+    searchQuery,
+    selectedTableName,
+    tableDetail,
+    tablePreview,
+    showPreview,
+    loadingSchema,
+    refreshing,
+    error,
+    loadingDetails,
+    detailsError,
+    loadingPreview,
+    previewError,
+    setTables,
+    setSearchQuery,
+    selectTable,
+    setTableDetail,
+    setTablePreview,
+    setShowPreview,
+    setLoadingSchema,
+    setRefreshing,
+    setError,
+    setLoadingDetails,
+    setDetailsError,
+    setLoadingPreview,
+    setPreviewError,
+    resetForConnection,
+    clearSelection,
+  } = useSchemaStore();
 
   // Load database tables list
   const fetchDatabaseSchema = async (isRefresh = false) => {
@@ -63,6 +54,9 @@ export const SchemaPage = () => {
     try {
       const res = await getSchema();
       setTables(res.data?.tables || []);
+      if (selectedTableName && !(res.data?.tables || []).some((table: { name: string }) => table.name === selectedTableName)) {
+        clearSelection();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load database schema.');
     } finally {
@@ -72,19 +66,27 @@ export const SchemaPage = () => {
   };
 
   useEffect(() => {
-    fetchDatabaseSchema();
-  }, [token]);
+    if (!token) return;
+    if (!activeConnectionId) {
+      if (connectionId !== null) resetForConnection(null);
+      return;
+    }
+    if (connectionId !== activeConnectionId) {
+      resetForConnection(activeConnectionId);
+      return;
+    }
+    if (tables.length === 0) fetchDatabaseSchema();
+  }, [token, activeConnectionId, connectionId, tables.length]);
 
   // Load selected table details and preview
   useEffect(() => {
     if (!selectedTableName || !token) return;
 
     const fetchTableDetails = async () => {
+      if (tableDetail?.name === selectedTableName) return;
+
       setLoadingDetails(true);
       setDetailsError(null);
-      setTablePreview(null);
-      setPreviewError(null);
-      setShowPreview(false);
       
       try {
         const res = await getTableSchema(selectedTableName);
@@ -97,13 +99,17 @@ export const SchemaPage = () => {
     };
 
     fetchTableDetails();
-  }, [selectedTableName, token]);
+  }, [selectedTableName, tableDetail, token]);
 
   const handleLoadPreview = async () => {
     if (!selectedTableName) return;
     setLoadingPreview(true);
     setPreviewError(null);
     setShowPreview(true);
+    if (tablePreview?.name === selectedTableName) {
+      setLoadingPreview(false);
+      return;
+    }
     try {
       const res = await getTablePreview(selectedTableName);
       setTablePreview(res.data);
@@ -195,7 +201,7 @@ export const SchemaPage = () => {
                   {filteredTables.map(table => (
                     <li key={table.name}>
                       <button 
-                        onClick={() => setSelectedTableName(table.name)}
+                        onClick={() => selectTable(table.name)}
                         className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${selectedTableName === table.name ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent'}`}
                       >
                         <div className="flex items-center gap-3 overflow-hidden">

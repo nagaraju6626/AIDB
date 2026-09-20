@@ -12,27 +12,45 @@ import {
 import { useLocation } from 'react-router-dom';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
-
 import { useConnectionStore } from '../../store/connectionStore';
 import { useNotificationStore } from '../../store/notificationStore';
+import { useQueryStore } from '../../store/queryStore';
 
 export const QueryPage = () => {
   const location = useLocation();
-  const [query, setQuery] = useState(location.state?.question || '');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
+  const {
+    queryDraft: query,
+    result,
+    resultConnectionId,
+    status,
+    error,
+    activeTab,
+    chartConfig,
+    setQueryDraft,
+    setResult,
+    setStatus,
+    setError,
+    setActiveTab,
+    setChartConfig,
+  } = useQueryStore();
+  const isProcessing = status === 'loading';
 
   const activeConnectionId = useConnectionStore(state => state.activeConnectionId);
 
   useEffect(() => {
+    if (result && resultConnectionId !== null && resultConnectionId !== activeConnectionId) {
+      setResult(null);
+      setStatus('idle');
+    }
+  }, [activeConnectionId, result, resultConnectionId, setResult, setStatus]);
+
+  useEffect(() => {
     if (location.state?.question) {
-       setQuery(location.state.question);
+       setQueryDraft(location.state.question);
        // We intentionally don't auto-run to allow user to edit or see it first
     }
-  }, [location.state]);
-  
-  const [activeTab, setActiveTab] = useState<'table' | 'chart'>('table');
+  }, [location.state, setQueryDraft]);
+
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedData, setCopiedData] = useState(false);
   
@@ -42,26 +60,32 @@ export const QueryPage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [validationIssue, setValidationIssue] = useState<{
+    error_type: string;
+    message: string;
+    suggestion: string;
+    corrected_query: string;
+  } | null>(null);
   
-  const [chartConfig, setChartConfig] = useState({
-    type: 'bar',
-    xAxis: '',
-    yAxis: ''
-  });
-
   const handleAsk = async (e?: React.FormEvent) => {
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
     }
-    if (!query.trim()) return;
+    if (!query.trim()) {
+      setValidationIssue(null);
+      setError('Please enter a database question.');
+      setStatus('error');
+      return;
+    }
 
     if (!activeConnectionId) {
       setError("Please select a database connection first.");
       return;
     }
     
-    setIsProcessing(true);
+    setStatus('loading');
     setError(null);
+    setValidationIssue(null);
     setResult(null);
     setActiveTab('table');
     
@@ -77,7 +101,8 @@ export const QueryPage = () => {
         });
       
       const data = response.data?.data || response.data;
-      setResult(data);
+      setResult(data, activeConnectionId);
+      setStatus('success');
       
       // Auto-configure chart if there are results
       if (data.rows && data.rows.length > 0 && data.columns && data.columns.length > 0) {
@@ -92,26 +117,23 @@ export const QueryPage = () => {
         
         let initialChartType = data.chart_type && data.chart_type !== 'none' ? data.chart_type : 'bar';
         
-        // Single KPI check
-        if (data.rows.length === 1 && numericCols.length === 1 && textCols.length === 0) {
-           initialChartType = 'kpi';
-        }
-
         setChartConfig({
           type: initialChartType,
           xAxis: textCols.length > 0 ? textCols[0] : data.columns[0],
           yAxis: numericCols.length > 0 ? numericCols[0] : data.columns[data.columns.length - 1]
         });
-        
-        if (initialChartType !== 'none' && initialChartType !== 'kpi') {
-          setActiveTab('chart');
-        }
       }
       
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'An error occurred while processing your request.');
+      const detail = err.response?.data?.detail;
+      if (detail?.validation_error) {
+        setValidationIssue(detail);
+        setError(detail.message);
+      } else {
+        setError(detail || err.message || 'An error occurred while processing your request.');
+      }
+      setStatus('error');
     } finally {
-      setIsProcessing(false);
       useNotificationStore.getState().fetchNotifications();
     }
   };
@@ -215,8 +237,6 @@ export const QueryPage = () => {
     });
   }, [result]);
 
-  const isKpi = result?.rows?.length === 1 && result.columns.length === 1 && typeof result.rows[0][result.columns[0]] === 'number';
-
   return (
     <div className="flex flex-col h-full max-w-7xl mx-auto gap-6 pb-12">
       <div className="flex flex-col">
@@ -232,7 +252,10 @@ export const QueryPage = () => {
             className="w-full pl-4 pr-32 py-4 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             placeholder='e.g., "Show me the top 5 students by marks"'
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              const nextQuery = e.target.value;
+              setQueryDraft(nextQuery);
+            }}
             onKeyDown={(e) => {
                if (e.key === 'Enter' && !e.shiftKey) {
                  e.preventDefault();
@@ -250,17 +273,6 @@ export const QueryPage = () => {
           </button>
         </div>
         
-        <div className="flex flex-wrap gap-2 mt-4">
-          {['Show the top 5 students by marks', 'How many employees are in each department?', 'List all courses with more than 50 students'].map(q => (
-            <button 
-              key={q}
-              onClick={() => setQuery(q)}
-              className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full transition-colors"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Loading State */}
@@ -275,11 +287,22 @@ export const QueryPage = () => {
 
       {/* Error State */}
       {error && !isProcessing && (
-        <div className={`p-4 rounded-xl border flex items-start gap-3 ${error.toLowerCase().includes('quota') ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 border-amber-200' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/30'}`}>
+        <div className={`p-4 rounded-xl border flex items-start gap-3 ${validationIssue || error.toLowerCase().includes('quota') ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 border-amber-200' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/30'}`}>
            <Terminal className="w-5 h-5 mt-0.5 flex-shrink-0" />
            <div className="flex-1">
-             <h4 className="font-semibold">{error.toLowerCase().includes('quota') ? 'API Quota Exceeded' : 'Query Failed'}</h4>
-             <p className="text-sm mt-1 leading-relaxed">{error}</p>
+             <h4 className="font-semibold">{validationIssue ? (validationIssue.error_type === 'UNSUPPORTED_OPERATION' ? 'Operation not supported' : validationIssue.error_type === 'INVALID_SQL' || validationIssue.error_type === 'INVALID_SQL_VALUE' ? 'SQL needs correction' : 'Query needs correction') : error.toLowerCase().includes('quota') ? 'API Quota Exceeded' : 'Query Failed'}</h4>
+             <p className="text-sm mt-1 leading-relaxed">{validationIssue ? `Problem: ${validationIssue.message}` : error}</p>
+             {validationIssue && (
+               <>
+                 <p className="text-sm mt-2 leading-relaxed">{validationIssue.suggestion}</p>
+                 <button
+                   onClick={() => setQueryDraft(validationIssue.corrected_query)}
+                   className="mt-3 bg-amber-100 hover:bg-amber-200 text-amber-900 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                 >
+                   Use Suggested Query
+                 </button>
+               </>
+             )}
              {error.toLowerCase().includes('quota') && (
                <button 
                  onClick={() => handleAsk()}
@@ -327,13 +350,6 @@ export const QueryPage = () => {
             {/* Main Area: Tabs (Table/Chart) */}
             <div className="lg:col-span-3 space-y-6">
               
-              {isKpi ? (
-                 <div className="bg-white dark:bg-slate-800 dark:border-slate-700 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-8 flex flex-col items-center justify-center min-h-[300px]">
-                    <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">{result.columns[0]}</h3>
-                    <div className="text-6xl font-bold text-blue-600 dark:text-blue-400 mb-4">{result.rows[0][result.columns[0]]?.toLocaleString()}</div>
-                    <p className="text-slate-400 text-sm italic">"{result.question}"</p>
-                 </div>
-              ) : (
                 <div className="bg-white dark:bg-slate-800 dark:border-slate-700 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col min-h-[400px]">
                   <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30 flex items-center justify-between">
                     <div className="flex items-center gap-1 bg-slate-200/50 p-1 rounded-lg">
@@ -345,7 +361,6 @@ export const QueryPage = () => {
                       </button>
                       <button 
                         onClick={() => setActiveTab('chart')}
-                        disabled={numericColumns.length === 0}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'chart' ? 'bg-white dark:bg-slate-800 dark:border-slate-700 text-navy dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed'}`}
                       >
                         <BarChart2 className="w-4 h-4" /> Chart
@@ -402,6 +417,12 @@ export const QueryPage = () => {
 
                     {activeTab === 'chart' && (
                       <div className="flex-1 p-6 flex flex-col">
+                        {numericColumns.length === 0 || chartData.length === 0 ? (
+                          <div className="flex flex-1 items-center justify-center min-h-[300px] text-slate-500 dark:text-slate-400 text-sm">
+                            This result does not contain numeric data suitable for a chart.
+                          </div>
+                        ) : (
+                        <>
                         <div className="flex flex-wrap gap-4 mb-6 items-center">
                           <select 
                             className="bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2"
@@ -497,35 +518,36 @@ export const QueryPage = () => {
                             )}
                           </ResponsiveContainer>
                         </div>
+                        </>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
-              )}
             </div>
 
             {/* Right Sidebar: SQL & Insights */}
             <div className="lg:col-span-1 space-y-6">
               
               {/* AI Insight */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/30 p-5">
-                <h3 className="font-semibold text-blue-900 flex items-center justify-between gap-2 mb-3">
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-900 rounded-xl shadow-sm border border-blue-100 dark:border-blue-800/60 p-5">
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100 flex items-center justify-between gap-2 mb-3">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-300" />
                     AI Insight
                   </div>
                   {result.insight_source === 'fallback' && (
-                    <span className="text-xs text-blue-500/70 italic font-normal bg-blue-100/50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs text-blue-500/70 dark:text-blue-200 italic font-normal bg-blue-100/50 dark:bg-blue-950/70 px-2 py-0.5 rounded-full">
                       Generated from query results
                     </span>
                   )}
                 </h3>
                 {result.insight ? (
-                  <p className="text-blue-800 dark:text-blue-200 leading-relaxed text-sm">
+                  <p className="text-blue-800 dark:text-blue-100 leading-relaxed text-sm">
                     {result.insight}
                   </p>
                 ) : (
-                  <p className="text-blue-500/70 italic text-sm">No insight available for this query.</p>
+                  <p className="text-blue-500/70 dark:text-blue-200/80 italic text-sm">No insight available for this query.</p>
                 )}
               </div>
 

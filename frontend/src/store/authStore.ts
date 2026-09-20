@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { useQueryStore } from './queryStore';
+import { useSchemaStore } from './schemaStore';
+import { useDashboardStore } from './dashboardStore';
 
 interface User {
   id: number;
@@ -26,6 +29,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   logout: () => {
     localStorage.removeItem('token');
+    useQueryStore.getState().clearWorkspace();
+    useSchemaStore.getState().clearWorkspace();
+    useDashboardStore.getState().clearWorkspace();
     // We should not remove connection-storage completely on logout to allow guest/other users?
     // Wait, connections belong to users. Let's clear it safely on the component level or leave it and it will get overwritten.
     set({ user: null, token: null });

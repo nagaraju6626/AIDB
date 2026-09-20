@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Database, Table2, ListOrdered, Bookmark, Clock, CheckCircle2, 
@@ -9,69 +9,45 @@ import {
 } from '../../services/api';
 import { ApiErrorAlert } from '../../components/UI/ApiErrorAlert';
 import { useAuthStore } from '../../store/authStore';
-
-// --- TYPES ---
-interface DatabaseInfo {
-  id: number;
-  name: string;
-  status: string;
-}
-
-interface Statistics {
-  total_tables: number;
-  total_records: number;
-  queries_run: number;
-  ai_queries: number;
-}
-
-interface TableSchema {
-  name: string;
-  columns: number;
-  records: number;
-}
-
-interface DashboardData {
-  database: DatabaseInfo;
-  statistics: Statistics;
-  recent_queries: any[];
-  schema_overview: TableSchema[];
-}
-
-interface QueryItem {
-  id: number;
-  question: string;
-  sql: string;
-  status: string;
-  execution_time_ms: number;
-  created_at: string;
-}
-
-interface SavedQuery {
-  id: number;
-  name: string;
-  description?: string;
-  created_at: string;
-}
+import { useConnectionStore } from '../../store/connectionStore';
+import { useDashboardStore } from '../../store/dashboardStore';
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
   const { token } = useAuthStore();
-  
-  // State
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [backendHealth, setBackendHealth] = useState<'connected' | 'disconnected' | 'checking'>('checking');
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  
-  // Data State
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [recentQueries, setRecentQueries] = useState<QueryItem[]>([]);
-  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
-  const [analyticsError, setAnalyticsError] = useState<boolean>(false);
+  const activeConnectionId = useConnectionStore(state => state.activeConnectionId);
+  const {
+    connectionId,
+    loading,
+    refreshing,
+    error,
+    backendHealth,
+    lastUpdated,
+    dashboardData,
+    recentQueries,
+    savedQueries,
+    analyticsError,
+    setConnectionId,
+    setLoading,
+    setRefreshing,
+    setError,
+    setBackendHealth,
+    setLastUpdated,
+    setDashboardData,
+    setRecentQueries,
+    setSavedQueries,
+    setAnalyticsError,
+    resetForConnection,
+  } = useDashboardStore();
 
   const fetchData = async (isRefresh = false) => {
     if (!token) return;
+    if (!activeConnectionId) {
+      setError('Please select a database connection before refreshing the dashboard.');
+      setBackendHealth('disconnected');
+      return;
+    }
+    if (isRefresh && refreshing) return;
     
     if (isRefresh) {
       setRefreshing(true);
@@ -98,7 +74,8 @@ export const DashboardPage = () => {
       setDashboardData(dashRes.data);
       setRecentQueries(queriesRes.data?.queries || []);
       setSavedQueries(savedRes.data?.queries || []);
-      setLastUpdated(new Date());
+      setConnectionId(activeConnectionId);
+      setLastUpdated(new Date().toISOString());
 
       // 3. Try fetching analytics (non-critical)
       try {
@@ -117,11 +94,18 @@ export const DashboardPage = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [token]);
+    if (!token) return;
+    if (connectionId !== activeConnectionId) {
+      resetForConnection(activeConnectionId);
+      return;
+    }
+    if (activeConnectionId && !dashboardData) fetchData();
+  }, [token, activeConnectionId, connectionId, dashboardData]);
 
   const handleRefresh = () => {
-    fetchData(true);
+    if (!refreshing) {
+      void fetchData(true);
+    }
   };
 
   if (loading) {
@@ -213,7 +197,7 @@ export const DashboardPage = () => {
           
           <div className="flex items-center gap-2 text-slate-400">
             <Clock className="w-4 h-4" />
-            <span>Updated {lastUpdated.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            <span>Updated {lastUpdated ? new Date(lastUpdated).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}</span>
           </div>
           
           <button 
@@ -332,12 +316,12 @@ export const DashboardPage = () => {
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mt-2">
-                        {q.status === 'completed' ? (
-                           <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle2 className="w-3 h-3" /> Completed</span>
+                        {q.status === 'success' ? (
+                          <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle2 className="w-3 h-3" /> Success</span>
                         ) : (
-                           <span className="flex items-center gap-1 text-red-500"><XCircle className="w-3 h-3" /> Failed</span>
+                          <span className="flex items-center gap-1 text-red-600 dark:text-red-400"><XCircle className="w-3 h-3" /> Failed</span>
                         )}
-                        {q.execution_time_ms && <span>{q.execution_time_ms} ms</span>}
+                        <span>{q.execution_time_ms ?? '--'} ms</span>
                       </div>
                     </li>
                   ))}

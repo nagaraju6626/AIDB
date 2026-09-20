@@ -1,10 +1,27 @@
 import os
 import urllib.parse
+from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any, Dict, List
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from models.connection import DatabaseConnection
 from security.encryption import decrypt_password
+
+def to_json_compatible(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): to_json_compatible(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [to_json_compatible(item) for item in value]
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
 
 class UniversalDatabaseService:
     def __init__(self, connection_model: DatabaseConnection):
@@ -111,7 +128,7 @@ class UniversalDatabaseService:
             cursor = conn.execute(text(query), parameters)
             # Fetch limited rows
             rows = cursor.fetchmany(limit)
-            return [dict(row._mapping) for row in rows]
+            return [to_json_compatible(dict(row._mapping)) for row in rows]
             
     def get_schema(self) -> Dict[str, Any]:
         """Returns the full schema of the database as expected by Gemini."""

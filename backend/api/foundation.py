@@ -26,11 +26,14 @@ def health() -> Dict[str, Any]:
 def schema(
     connection: DatabaseConnection = Depends(get_active_connection)
 ) -> Dict[str, Any]:
+    service = _database_service(connection)
     try:
-        tables = _database_service(connection).get_tables()
+        tables = service.get_tables()
         return {"success": True, "data": {"tables": tables}}
     except (FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=503, detail="Unable to connect to the configured database") from exc
+    finally:
+        service.disconnect()
 
 
 @router.get("/schema/{table_name}")
@@ -38,8 +41,8 @@ def table_schema(
     table_name: str,
     connection: DatabaseConnection = Depends(get_active_connection)
 ) -> Dict[str, Any]:
+    service = _database_service(connection)
     try:
-        service = _database_service(connection)
         return {
             "success": True,
             "data": {
@@ -52,6 +55,8 @@ def table_schema(
         raise HTTPException(status_code=404, detail="Table not found") from exc
     except (FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=503, detail="Unable to connect to the configured database") from exc
+    finally:
+        service.disconnect()
 
 
 @router.get("/schema/{table_name}/preview")
@@ -59,8 +64,8 @@ def table_preview(
     table_name: str,
     connection: DatabaseConnection = Depends(get_active_connection)
 ) -> Dict[str, Any]:
+    service = _database_service(connection)
     try:
-        service = _database_service(connection)
         tables = [t["name"] for t in service.get_tables()]
         if table_name not in tables:
             raise KeyError(f"Table not found: {table_name}")
@@ -77,6 +82,8 @@ def table_preview(
         raise HTTPException(status_code=404, detail="Table not found") from exc
     except (FileNotFoundError, OSError) as exc:
         raise HTTPException(status_code=503, detail="Unable to connect to the configured database") from exc
+    finally:
+        service.disconnect()
         
 @router.get("/dashboard")
 def dashboard(
