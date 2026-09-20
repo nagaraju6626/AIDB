@@ -7,7 +7,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from database.core import engine, Base
+from database.core import engine, Base, get_database_info
 from models.user import User, PasswordResetToken
 from models.connection import DatabaseConnection
 from models.query import QueryHistory, SavedQuery
@@ -66,6 +66,11 @@ def api_health():
         "status": "ok",
         "message": "AI Database Assistant API is running"
     }
+
+
+@app.get("/api/diagnostics/database")
+def database_diagnostics():
+    return get_database_info()
 
 app.include_router(
     auth.router,

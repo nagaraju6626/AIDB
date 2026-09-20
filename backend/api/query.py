@@ -9,7 +9,7 @@ from api.deps import get_current_user
 from models.user import User
 from database.universal_service import UniversalDatabaseService
 from services.ai_service import AIService
-from services.query_validator import QueryCorrectionError, validate_query_before_execution
+from services.query_validator import QueryCorrectionError, validate_query_before_execution, is_sql_query
 from api.notifications import create_notification
 
 router = APIRouter()
@@ -50,7 +50,7 @@ def ask_question(
     try:
         schema = adapter.get_schema()
         
-        is_direct_sql = question.lstrip().lower().startswith(("select", "with", "delete", "update", "insert", "drop", "alter", "truncate", "create", "grant", "revoke"))
+        is_direct_sql = is_sql_query(question, connection.db_type)
         ai_response = {"intent": "Direct SQL query", "chart_type": "none"}
         raw_sql = question if is_direct_sql else None
         if not is_direct_sql:

@@ -58,13 +58,16 @@ class UniversalDatabaseService:
             raise Exception(f"Connection failed: {str(e)}")
 
     def get_tables(self) -> List[Dict[str, Any]]:
+        from database.core import Base
+        internal_tables = set(Base.metadata.tables.keys())
+        
         inspector = inspect(self.engine)
         table_names = inspector.get_table_names()
         
         tables = []
         with self.engine.connect() as conn:
             for t_name in table_names:
-                if t_name.startswith("sqlite_"):
+                if t_name.startswith("sqlite_") or t_name in internal_tables:
                     continue
                 try:
                     quote = '`' if self.connection_model.db_type == 'mysql' else '"'

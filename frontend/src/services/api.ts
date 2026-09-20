@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const apiOrigin = configuredApiUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
 export const API_BASE_URL = `${apiOrigin}/api`;
 
@@ -37,6 +37,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.message === 'Network Error') {
+        error.message = 'Backend server is not running. Please start the backend on port 8000.';
+    }
     if (error.response?.data?.detail?.includes('Unable to connect') || 
         error.response?.data?.detail?.includes('Failed to connect') ||
         error.response?.data?.detail?.includes('Connection failed') ||

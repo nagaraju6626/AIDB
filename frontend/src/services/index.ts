@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const apiOrigin = configuredApiUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
 
 const api = axios.create({
@@ -43,6 +43,9 @@ export const getAnalytics = async () => api.get<ApiEnvelope<unknown>>('/analytic
 
 export const getApiErrorMessage = (error: unknown): string => {
 	if (axios.isAxiosError(error)) {
+        if (error.message === 'Network Error' || error.message?.includes('Backend server is not running')) {
+            return 'Backend server is not running. Please start the backend on port 8000.';
+        }
 		return error.response?.data?.detail || error.response?.data?.error || 'Unable to connect to the AI Data Assistant server.';
 	}
 	return 'Unable to connect to the AI Data Assistant server.';

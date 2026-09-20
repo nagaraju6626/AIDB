@@ -53,8 +53,10 @@ export const SchemaPage = () => {
     setError(null);
     try {
       const res = await getSchema();
-      setTables(res.data?.tables || []);
-      if (selectedTableName && !(res.data?.tables || []).some((table: { name: string }) => table.name === selectedTableName)) {
+      const fetchedTables = res.data?.tables || [];
+      const uniqueTables = Array.from(new Map(fetchedTables.map((table: { name: string }) => [table.name, table])).values());
+      setTables(uniqueTables as any[]);
+      if (selectedTableName && !uniqueTables.some((table: { name: string }) => table.name === selectedTableName)) {
         clearSelection();
       }
     } catch (err: any) {

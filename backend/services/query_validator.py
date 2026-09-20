@@ -40,56 +40,6 @@ def _schema_candidates(schema: Dict[str, Any]) -> tuple[list[str], list[str]]:
     return tables, columns
 
 
-def _natural_language_check(question: str, schema: Dict[str, Any], adapter: Any) -> None:
-    tables, columns = _schema_candidates(schema)
-    known_words = {word.lower() for word in tables + columns}
-    words = _tokens(question)
-
-    for word in words:
-        if word.lower() in known_words or len(word) < 3:
-            continue
-        table_match = _similar(word, tables)
-        if table_match:
-            raise QueryCorrectionError(
-                "INVALID_TABLE",
-                f"Table '{word}' does not exist.",
-                f"Did you mean '{table_match}'?",
-                question.replace(word, table_match),
-            )
-        column_match = _similar(word, columns)
-        if column_match:
-            raise QueryCorrectionError(
-                "INVALID_COLUMN",
-                f"Column '{word}' does not exist in the selected database.",
-                f"Did you mean '{column_match}'?",
-                question.replace(word, column_match),
-            )
-
-    # Only compare likely filter values. Unknown values elsewhere are allowed and can validly return zero rows.
-    for match in re.finditer(r"\b(?:from|where|in|is|equals?)\s+['\"]?([A-Za-z][A-Za-z0-9 _-]*)", question, re.IGNORECASE):
-        value = match.group(1).strip().split()[0].strip("'\"")
-        if len(value) < 4 or value.lower() in known_words:
-            continue
-        for table_name, table_columns in schema.items():
-            for column in table_columns:
-                column_name = column["name"]
-                if str(column.get("type", "")).lower().startswith(("varchar", "char", "text")):
-                    try:
-                        rows = adapter.execute_read_query(
-                            f"SELECT DISTINCT `{column_name}` FROM `{table_name}` WHERE `{column_name}` IS NOT NULL LIMIT 200"
-                        )
-                    except Exception:
-                        continue
-                    values = [str(row.get(column_name)) for row in rows if row.get(column_name) is not None]
-                    match_value = _similar(value, values)
-                    if match_value:
-                        raise QueryCorrectionError(
-                            "INVALID_VALUE",
-                            f"'{value}' was not found as a matching value in the selected database.",
-                            f"Did you mean '{match_value}'?",
-                            question.replace(value, match_value),
-                        )
-
 
 def _sql_check(sql: str, schema: Dict[str, Any], adapter: Any, dialect: str) -> str:
     try:
@@ -194,6 +144,47 @@ def _sql_check(sql: str, schema: Dict[str, Any], adapter: Any, dialect: str) -> 
     return safe_sql
 
 
+def is_sql_query(question: str, dialect: str = "mysql") -> bool:
+    q = question.strip()
+    q_lower = q.lower()
+    
+    sql_starts = ("select", "with", "explain", "show", "describe", "delete", "update", "insert", "drop", "alter", "truncate", "create", "grant", "revoke")
+    if not q_lower.startswith(sql_starts):
+        return False
+        
+    if q.endswith(';'):
+        return True
+        
+    if q_lower.startswith("show "):
+        tokens = q_lower.split()
+        if len(tokens) > 1 and tokens[1] not in ("tables", "databases", "columns", "index", "status", "variables", "create", "grants", "warnings", "errors"):
+            return False
+            
+    if q_lower.startswith("select "):
+        tokens = q_lower.split()
+        if len(tokens) > 1 and tokens[1] in ("the", "me", "all", "a"):
+            return False
+            
+    uppercase_keywords = ["SELECT ", "FROM ", "WHERE ", "GROUP BY ", "ORDER BY ", "JOIN "]
+    if any(kw in q for kw in uppercase_keywords):
+        return True
+
+    if "*" in q:
+        return True
+        
+    if q_lower.startswith("select ") and re.search(r'\b(from|form|where|join|group by|order by|limit)\b', q_lower):
+        return True
+        
+    try:
+        parsed = parse_one(q, read=dialect)
+        if not isinstance(parsed, exp.Command):
+            return True
+    except Exception:
+        pass
+        
+    return False
+
+
 def validate_query_before_execution(
     question: str,
     generated_sql: str,
@@ -209,9 +200,9 @@ def validate_query_before_execution(
             question,
         )
 
-    looks_like_sql = question.lstrip().lower().startswith(("select", "with", "delete", "update", "insert", "drop", "alter", "truncate", "create", "grant", "revoke"))
+    looks_like_sql = is_sql_query(question, dialect)
     if looks_like_sql:
         return _sql_check(question, schema, adapter, dialect)
 
-    _natural_language_check(question, schema, adapter)
+
     return _sql_check(generated_sql, schema, adapter, dialect)
