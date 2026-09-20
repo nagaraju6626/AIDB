@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-const configuredApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const configuredApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const apiOrigin = configuredApiUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
 
 const api = axios.create({
-	baseURL: `${configuredApiUrl.replace(/\/$/, '')}/api`,
+	baseURL: `${apiOrigin}/api`,
 	headers: { 'Content-Type': 'application/json' },
 });
 
