@@ -8,17 +8,24 @@ from groq import APIError, APIConnectionError, RateLimitError
 
 logger = logging.getLogger(__name__)
 
-api_key = os.environ.get("GROQ_API_KEY")
+DEFAULT_MODEL_NAME = "qwen/qwen3.8-27b"
 
-MODEL_NAME = os.environ.get("AI_MODEL", "qwen-2.5-32b")
+def _get_api_key() -> str | None:
+    value = os.getenv("GROQ_API_KEY")
+    if not value:
+        return None
+    return value.strip().strip('"').strip("'").strip() or None
 
 class AIService:
     def __init__(self):
-        self.api_key = api_key
-        # Delay throwing an error to avoid crashing FastAPI startup.
-        # Initialize client with a dummy key if missing to avoid immediate SDK crashes.
-        self.client = Groq(api_key=api_key or "UNCONFIGURED_KEY", timeout=15.0)
-        self.model_name = "qwen/qwen3.8-27b"
+        self.api_key = _get_api_key()
+        self.model_name = os.getenv("AI_MODEL", DEFAULT_MODEL_NAME).strip() or DEFAULT_MODEL_NAME
+        self.client = Groq(api_key=self.api_key, timeout=15.0) if self.api_key else None
+        logger.info(
+            "Groq API key configured: %s; model configured: %s",
+            "YES" if self.api_key else "NO",
+            self.model_name,
+        )
 
     def _execute_with_retry(self, func, *args, **kwargs):
         max_retries = 3
@@ -85,7 +92,7 @@ Determine the most appropriate chart type based on the expected result.
 
 DO NOT wrap your response in markdown blocks. Return ONLY valid JSON.
 """
-        if not self.api_key:
+        if not self.api_key or self.client is None:
             raise Exception("API_KEY_INVALID")
 
         def _call_groq():
@@ -148,7 +155,7 @@ User asked: "{question}"
 Executed SQL: {sql}
 Results (up to 50 rows): {json.dumps(results_subset)}
 """
-        if not self.api_key:
+        if not self.api_key or self.client is None:
             return {"insight": self._generate_fallback_insight(results), "insight_source": "fallback"}
 
         def _call_groq():
