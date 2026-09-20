@@ -7,8 +7,8 @@ class Notification(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    type = Column(String) # 'success', 'error', 'info', 'warning'
-    title = Column(String)
-    message = Column(String)
+    type = Column(String(50)) # 'success', 'error', 'info', 'warning'
+    title = Column(String(255))
+    message = Column(String(1000))
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
