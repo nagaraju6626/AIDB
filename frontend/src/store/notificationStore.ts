@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { 
   getNotifications, 
   createNotification, 
@@ -24,27 +24,72 @@ interface NotificationState {
   notifications: AppNotification[];
   unreadCount: number;
   isLoading: boolean;
-  fetchNotifications: () => Promise<void>;
+  activeToasts: AppNotification[];
+  isInitialized: boolean;
+  knownNotificationIds: Set<string | number>;
+  
+  fetchNotifications: (silent?: boolean) => Promise<void>;
   addNotification: (notification: { type: NotificationType, title: string, message: string }) => Promise<void>;
   markAsRead: (id: string | number) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   clearAll: () => Promise<void>;
+  dismissToast: (id: string | number) => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
   isLoading: false,
+  activeToasts: [],
+  isInitialized: false,
+  knownNotificationIds: new Set(),
 
-  fetchNotifications: async () => {
+  fetchNotifications: async (silent = false) => {
     // Only fetch if logged in
     if (!useAuthStore.getState().token) return;
     
-    set({ isLoading: true });
+    if (!silent) set({ isLoading: true });
     try {
       const data = await getNotifications();
       const countRes = await getUnreadNotificationCount();
-      set({ notifications: data, unreadCount: countRes.count, isLoading: false });
+      
+      set((state) => {
+        const { isInitialized, knownNotificationIds, activeToasts } = state;
+        
+        if (!isInitialized) {
+          // First load: just memorize existing IDs, no toasts
+          const newKnownIds = new Set<string | number>();
+          data.forEach((n: AppNotification) => newKnownIds.add(n.id));
+          return {
+            notifications: data,
+            unreadCount: countRes.count,
+            isLoading: false,
+            isInitialized: true,
+            knownNotificationIds: newKnownIds,
+          };
+        }
+        
+        // Subsequent loads: find genuinely new unread notifications
+        const newToasts = [...activeToasts];
+        const newKnownIds = new Set(knownNotificationIds);
+        
+        data.forEach((n: AppNotification) => {
+          if (!newKnownIds.has(n.id)) {
+            newKnownIds.add(n.id);
+            if (!n.is_read) {
+              newToasts.push(n);
+            }
+          }
+        });
+        
+        return {
+          notifications: data,
+          unreadCount: countRes.count,
+          isLoading: false,
+          activeToasts: newToasts,
+          knownNotificationIds: newKnownIds,
+        };
+      });
     } catch (e) {
       console.error('Failed to fetch notifications', e);
       set({ isLoading: false });
@@ -52,14 +97,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   addNotification: async (notification) => {
-    // If not logged in, we can't persist to the backend for this user.
     if (!useAuthStore.getState().token) {
        console.warn('Cannot add notification without authentication:', notification);
        return;
     }
     try {
       await createNotification(notification);
-      await get().fetchNotifications();
+      await get().fetchNotifications(true);
     } catch (e) {
       console.error('Failed to create notification', e);
     }
@@ -77,10 +121,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     });
     try {
       await markNotificationAsRead(Number(id));
-      await get().fetchNotifications();
+      await get().fetchNotifications(true);
     } catch (e) {
       console.error('Failed to mark read', e);
-      get().fetchNotifications(); // revert on failure
+      get().fetchNotifications(true); // revert on failure
     }
   },
 
@@ -93,10 +137,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }));
     try {
       await markAllNotificationsAsRead();
-      await get().fetchNotifications();
+      await get().fetchNotifications(true);
     } catch (e) {
       console.error('Failed to mark all read', e);
-      get().fetchNotifications();
+      get().fetchNotifications(true);
     }
   },
 
@@ -107,7 +151,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       await deleteAllNotifications();
     } catch (e) {
       console.error('Failed to clear notifications', e);
-      get().fetchNotifications();
+      get().fetchNotifications(true);
     }
   },
+
+  dismissToast: (id) => {
+    set((state) => ({
+      activeToasts: state.activeToasts.filter((t) => t.id !== id)
+    }));
+  }
 }));
